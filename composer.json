@@ -1,0 +1,22 @@
+{
+    "name": "zealpulse/zealpulse",
+    "description": "ZealPulse — a real-time server-ops dashboard & live event board built on ZealPHP, exercising every framework phase (HTTP, request input, static/conditional GET, sessions, middleware, routing, streaming/SSE/WebSocket, Store/Counter/Cache, lifecycle modes, CGI, timers/tasks/signals, security, templates/htmx, infra).",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "sibidharan/zealphp": "^0.4.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "ZealPulse\\": "src/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "*": true
+        }
+    },
+    "minimum-stability": "stable"
+}
