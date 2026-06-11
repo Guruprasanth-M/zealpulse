@@ -78,24 +78,25 @@ the app boots and demos even with no databases attached.
 
 ```bash
 composer install
-php app.php                      # coroutine mode (recommended), http://127.0.0.1:9100
-ZEAL_MODE=mixed php app.php      # or coroutine-legacy / legacy-cgi
+bash scripts/setup-env.sh up                 # one command: MongoDB (replica set) + MariaDB + Redis (no sudo/docker)
+source ~/.zealpulse-env/zealpulse.env
+php app.php                                   # coroutine mode (recommended), http://127.0.0.1:9100
+ZEAL_MODE=mixed php app.php                   # or coroutine-legacy / legacy-cgi
 ```
 
-**Optional data services** (env-gated; absent → graceful skip):
+`scripts/setup-env.sh` stands up **all three data services** from portable binaries as plain user processes and
+writes the env ZealPulse reads — see **[SETUP.md](./SETUP.md)** for the full fresh-box walkthrough. The three:
 
-```bash
-# MySQL (system of record)
-export ZP_DB_DSN='mysql:host=127.0.0.1;dbname=zealpulse' ZP_DB_USER=... ZP_DB_PASS=...
-# MongoDB (firehose/analytics/GridFS) — transactions + change streams need a replica set
-export ZP_MONGO_URI='mongodb://127.0.0.1:27017' ZP_MONGO_DB=zealpulse
-# Redis (Store/Counter/sessions/WS federation)
-export ZEALPHP_REDIS_URL='redis://127.0.0.1:6379'
-```
+| Service | Role | Accessed through |
+|---|---|---|
+| **MariaDB** | system of record (users, incidents, alert rules, report metadata) | `ZealPHP\Db\DbConnectionPool` (`pdo()`/`with()`/`transaction()`) |
+| **MongoDB** (replica set `rs0`) | firehose · analytics rollups · change-stream live push · GridFS artifacts | `mongodb/mongodb` (C `ext-mongodb`; swap to the `zealphp-mongodb` Rust ext for the async path) |
+| **Redis** | `Store`/`Counter` backend · sessions · `Store::publish`/`App::subscribe` pub-sub · WS federation | **the framework's own Redis layer** — `ZEALPHP_STORE_BACKEND=redis` + `ZEALPHP_REDIS_URL`; the framework's `PredisDriver`/`PhpredisDriver` handles the connection (the app never touches a raw client) |
 
-> **Runtime:** running live needs the OpenSwoole + ext-zealphp runtime; the Mongo features need the
-> `zealphp-mongodb` Rust extension and a MongoDB server (replica set for transactions/change-streams/GridFS).
-> The app boots in any lifecycle mode and degrades gracefully when an extension or service is missing.
+> **Data services are optional** — every feature skip-records gracefully when its service is absent, so the app
+> still boots and demos with nothing attached. **Runtime:** running live needs the OpenSwoole + ext-zealphp runtime;
+> the async Mongo path additionally needs the `zealphp-mongodb` Rust ext (the C `ext-mongodb` works out of the box,
+> blocking). Transactions / change streams / GridFS need the MongoDB **replica set** that `setup-env.sh` initializes.
 
 ---
 
@@ -123,7 +124,8 @@ for the full phase-by-phase plan and the per-API utilization checklist.
 - [sibidharan/zealphp](https://github.com/sibidharan/zealphp) — the framework (OpenSwoole-based)
 - [OpenSwoole](https://openswoole.com) — the coroutine HTTP/async runtime
 - [sibidharan/zealphp-mongodb](https://github.com/sibidharan/zealphp-mongodb) — the async Rust MongoDB driver
-- MySQL · Redis (optional) · htmx (UI)
+- MariaDB/MySQL (`Db\DbConnectionPool`) · **Redis via the framework's `Store`/`Counter`/session/pub-sub layer**
+  (`PredisDriver`/`PhpredisDriver`) · htmx (UI). `scripts/setup-env.sh` stands all three up with no sudo/docker.
 
 ZealPulse is developed alongside a ZealPHP verification effort — building it phase by phase surfaces real framework
 bugs (e.g. a HIGH session-fixation fatal found while building the Phase-4 login) that get reported upstream.

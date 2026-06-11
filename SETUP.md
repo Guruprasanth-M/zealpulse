@@ -26,18 +26,29 @@ bash scripts/setup-env.sh up      # downloads + starts MongoDB (replica set rs0)
 source ~/.zealpulse-env/zealpulse.env
 ```
 
-`setup-env.sh` is **idempotent** and **no-sudo**: it downloads portable MongoDB + MariaDB binaries into
-`~/.zealpulse-env`, starts them as user processes, initializes a **single-node MongoDB replica set** (so
-transactions, change streams, and GridFS work — they require a replica set, same as the official driver), creates
-the `zealpulse` MySQL database + user, and writes the env file ZealPulse reads:
+`setup-env.sh` is **idempotent** and **no-sudo**: from portable binaries (downloaded into `~/.zealpulse-env`) it
+stands up **three** services as user processes —
+
+- **MongoDB** as a **single-node replica set** (`rs0`) so transactions, change streams, and GridFS work (they require
+  a replica set, same as the official driver);
+- **MariaDB** with the `zealpulse` database + user (the SQL runs via PHP/`pdo_mysql` — the shipped `mariadb` CLI links
+  `libncurses.so.5`, absent on Ubuntu 24.04, so we never depend on it);
+- **Redis** (built from source with `make`), the framework's `Store`/`Counter`/session/pub-sub backend;
+
+and writes the env file ZealPulse reads:
 
 ```
 ZP_MONGO_URI=mongodb://127.0.0.1:27017/?replicaSet=rs0   ZP_MONGO_DB=zealpulse
 ZP_DB_DSN=mysql:host=127.0.0.1;port=3307;dbname=zealpulse;charset=utf8mb4   ZP_DB_USER=zealpulse  ZP_DB_PASS=pulse
+ZEALPHP_REDIS_URL=redis://127.0.0.1:6379
 ```
 
+> **Redis is reached through the framework, not a raw client.** ZealPulse sets `ZEALPHP_STORE_BACKEND=redis` and the
+> framework's driver layer (`PhpredisDriver` when `ext-redis` is present, else the pure-PHP `PredisDriver` — `predis/predis`
+> is a project dep so it always works; under OpenSwoole HOOK_ALL its socket I/O is non-blocking) owns the connection.
+
 Other commands: `setup-env.sh status` (what's up), `setup-env.sh down` (stop, keep data), `setup-env.sh env`
-(print the export lines). Knobs: `ZP_ENV_BASE`, `ZP_MONGO_PORT`, `ZP_DB_PORT`, `MONGO_VER`, `MARIADB_VER`.
+(print the export lines). Knobs: `ZP_ENV_BASE`, `ZP_MONGO_PORT`, `ZP_DB_PORT`, `ZP_REDIS_PORT`, `MONGO_VER`, `MARIADB_VER`.
 
 > **Data services are optional.** Every ZealPulse feature skip-records gracefully when its service is absent, so the
 > app still boots and demos with no databases — but the dual-DB phases (the live board, firehose, GridFS) only light
@@ -66,9 +77,10 @@ ZEAL_MODE=mixed php app.php       # or coroutine-legacy / legacy-cgi
 Smoke test:
 
 ```bash
-curl -s http://127.0.0.1:9100/health          # {"status":"ok",...}
-mongosh --port 27017 --quiet --eval 'rs.status().ok'    # 1  (replica set up)
-mysql -h127.0.0.1 -P3307 -uzealpulse -ppulse -e 'SELECT 1'   # MariaDB reachable
+curl -s http://127.0.0.1:9100/health                          # {"status":"ok",...}
+mongosh --port 27017 --quiet --eval 'rs.status().ok'          # 1  (replica set up)
+php -r '$p=new PDO(getenv("ZP_DB_DSN"),getenv("ZP_DB_USER"),getenv("ZP_DB_PASS"));echo $p->query("SELECT VERSION()")->fetchColumn(),"\n";'  # MariaDB
+~/.zealpulse-env/redis/redis-cli ping                         # PONG
 ```
 
 ## 5. Async MongoDB (optional, for the full performance story)

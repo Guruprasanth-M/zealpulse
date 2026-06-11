@@ -20,11 +20,25 @@ set -uo pipefail
 BASE="${ZP_ENV_BASE:-$HOME/.zealpulse-env}"
 MONGO_PORT="${ZP_MONGO_PORT:-27017}"
 DB_PORT="${ZP_DB_PORT:-3307}"
+REDIS_PORT="${ZP_REDIS_PORT:-6379}"
 MONGO_VER="${MONGO_VER:-7.0.14}"
 MARIADB_VER="${MARIADB_VER:-11.4.3}"
 ARCH="$(uname -m)"                       # x86_64
 ENVFILE="$BASE/zealpulse.env"
-mkdir -p "$BASE"/{dl,mongo/data,mongo/log,maria/data,maria/log,run}
+mkdir -p "$BASE"/{dl,mongo/data,mongo/log,maria/data,maria/log,redis/data,redis/log,run}
+
+# Run SQL against the running MariaDB via PHP/pdo_mysql — the shipped `mariadb`
+# CLI links libncurses.so.5 (absent on Ubuntu 24.04), so we never rely on it.
+maria_sql(){ php -r '
+$port=$argv[1]; $sql=$argv[2];
+foreach([["root",""],["root","root"]] as [$u,$p]){
+  try { $pdo=new PDO("mysql:host=127.0.0.1;port=$port",$u,$p); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
+        foreach(array_filter(array_map("trim",explode(";",$sql))) as $s) $pdo->exec($s);
+        exit(0);
+  } catch(Throwable $e){ $last=$e->getMessage(); }
+}
+fwrite(STDERR,"maria_sql: $last\n"); exit(1);
+' "$DB_PORT" "$1"; }
 
 say(){ printf '\033[36m[setup]\033[0m %s\n' "$*"; }
 err(){ printf '\033[31m[setup] %s\033[0m\n' "$*" >&2; }
@@ -90,14 +104,39 @@ setup_maria(){
     for i in $(seq 1 25); do is_up "$DB_PORT" && break; sleep 1; done
   fi
   is_up "$DB_PORT" || { err "MariaDB failed to start (see $dir/log/maria.log)"; tail -3 "$dir/log/maria.log" 2>/dev/null; return 1; }
-  say "creating zealpulse database + user…"
-  "$base/bin/mariadb" --no-defaults -h127.0.0.1 -P"$DB_PORT" -uroot <<'SQL' 2>/dev/null
-CREATE DATABASE IF NOT EXISTS zealpulse CHARACTER SET utf8mb4;
-CREATE USER IF NOT EXISTS 'zealpulse'@'127.0.0.1' IDENTIFIED BY 'pulse';
-GRANT ALL ON zealpulse.* TO 'zealpulse'@'127.0.0.1';
-FLUSH PRIVILEGES;
-SQL
-  say "MariaDB ready on 127.0.0.1:$DB_PORT (db=zealpulse user=zealpulse)"
+  say "creating zealpulse database + user (via PHP — the mariadb CLI is libncurses-broken on 24.04)…"
+  # 127.0.0.1 resolves to 'localhost' with name-resolution on, so grant all three hosts.
+  maria_sql "CREATE DATABASE IF NOT EXISTS zealpulse CHARACTER SET utf8mb4;
+    CREATE USER IF NOT EXISTS 'zealpulse'@'localhost' IDENTIFIED BY 'pulse';
+    CREATE USER IF NOT EXISTS 'zealpulse'@'127.0.0.1' IDENTIFIED BY 'pulse';
+    CREATE USER IF NOT EXISTS 'zealpulse'@'%' IDENTIFIED BY 'pulse';
+    GRANT ALL ON zealpulse.* TO 'zealpulse'@'localhost';
+    GRANT ALL ON zealpulse.* TO 'zealpulse'@'127.0.0.1';
+    GRANT ALL ON zealpulse.* TO 'zealpulse'@'%';
+    FLUSH PRIVILEGES" && say "MariaDB ready on 127.0.0.1:$DB_PORT (db=zealpulse user=zealpulse)" \
+    || err "MariaDB grant step failed"
+}
+
+setup_redis(){
+  local dir="$BASE/redis"; local bin="$dir/redis-server"
+  if [ ! -x "$bin" ]; then
+    say "downloading + building Redis (gcc/make)…"
+    curl -fSL --retry 3 -o "$BASE/dl/redis-stable.tar.gz" https://download.redis.io/redis-stable.tar.gz 2>/dev/null \
+      || { err "Redis download failed"; return 1; }
+    tar -xzf "$BASE/dl/redis-stable.tar.gz" -C "$BASE/dl"
+    ( cd "$BASE/dl/redis-stable" && make -j"$(nproc)" BUILD_TLS=no >/dev/null 2>&1 ) \
+      || { err "Redis build failed"; return 1; }
+    cp "$BASE/dl/redis-stable/src/redis-server" "$BASE/dl/redis-stable/src/redis-cli" "$dir/"
+    say "Redis built → $dir"
+  fi
+  if is_up "$REDIS_PORT"; then say "Redis already listening on $REDIS_PORT"; else
+    say "starting redis-server on $REDIS_PORT…"
+    "$bin" --port "$REDIS_PORT" --dir "$dir/data" --daemonize yes \
+           --logfile "$dir/log/redis.log" --save "" --appendonly no >/dev/null 2>&1
+    for i in $(seq 1 15); do is_up "$REDIS_PORT" && break; sleep 1; done
+  fi
+  "$dir/redis-cli" -p "$REDIS_PORT" ping 2>/dev/null | grep -q PONG \
+    && say "Redis ready on 127.0.0.1:$REDIS_PORT" || err "Redis not responding"
 }
 
 write_env(){
@@ -108,22 +147,25 @@ export ZP_MONGO_DB='zealpulse'
 export ZP_DB_DSN='mysql:host=127.0.0.1;port=$DB_PORT;dbname=zealpulse;charset=utf8mb4'
 export ZP_DB_USER='zealpulse'
 export ZP_DB_PASS='pulse'
+export ZEALPHP_REDIS_URL='redis://127.0.0.1:$REDIS_PORT'
 EOF
   say "env written → $ENVFILE"
 }
 
 case "${1:-up}" in
   up)
-    setup_mongo; setup_maria; write_env
+    setup_mongo; setup_maria; setup_redis; write_env
     say "DONE.  source $ENVFILE  then  php app.php"
     ;;
   status)
     is_up "$MONGO_PORT" && echo "mongo: UP ($MONGO_PORT)" || echo "mongo: down"
     is_up "$DB_PORT"    && echo "maria: UP ($DB_PORT)"    || echo "maria: down"
+    is_up "$REDIS_PORT" && echo "redis: UP ($REDIS_PORT)" || echo "redis: down"
     ;;
   down)
     mongosh --quiet --port "$MONGO_PORT" --eval 'db.adminCommand({shutdown:1})' 2>/dev/null
-    [ -f "$BASE/maria/dist/bin/mariadb-admin" ] && "$BASE/maria/dist/bin/mariadb-admin" --no-defaults -h127.0.0.1 -P"$DB_PORT" -uroot shutdown 2>/dev/null
+    maria_sql "SHUTDOWN" 2>/dev/null
+    [ -x "$BASE/redis/redis-cli" ] && "$BASE/redis/redis-cli" -p "$REDIS_PORT" shutdown nosave 2>/dev/null
     say "stopped (data kept under $BASE)"
     ;;
   env) cat "$ENVFILE" 2>/dev/null || err "no env yet — run: bash scripts/setup-env.sh up" ;;

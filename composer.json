@@ -6,6 +6,7 @@
     "require": {
         "php": "^8.3",
         "mongodb/mongodb": "^2.3",
+        "predis/predis": "^3.5",
         "sibidharan/zealphp": "^0.4.8"
     },
     "autoload": {
