@@ -169,7 +169,7 @@ does **not** re-file them. (See `../PHASE1-2-RERUN-V048-VERDICT.md`, `../PHASE3-
 - **Done:** download + conditional + Range green; native-handler behaviour confirmed; parity sweep filed.
 - **Full-capacity follow-up (P8 forward-ref):** once GridFS lands, the download center grows a second source — vault artifacts streamed via `openDownloadStream` → `$response->stream()` (chunked, no temp file) alongside the disk path's `sendFile()`; diff + record the two paths' header surfaces, and add the multipart-range + If-Range resume probes the first pass skipped.
 
-### Phase 4 — Sessions & identity · `route/phase4.php` + `src/Auth.php` · **Status: ◻️ planned**
+### Phase 4 — Sessions & identity · `route/phase4.php` + `src/Auth.php` · **Status: ✅ DONE (coroutine, v0.4.8)**
 - **Feature:** login/logout with fixation-safe session rotation, per-user dashboard prefs (theme/layout/refresh-rate), flash messages, a **session-handler switchboard** (env `ZEAL_SESSION_HANDLER=file|table|store|redis|memory`) so the same login works on every backend, an `/admin/sessions` live-session viewer.
 - **APIs:** `session_start()`/`session_id()`/`session_regenerate_id(true)`/`session_destroy()`/`session_write_close()`/`session_name()`/`session_status()`/`session_unset()`/`session_abort()`/`session_commit()`, `session_set_cookie_params()`/`session_get_cookie_params()`, `session_create_id()`, `session_encode()`/`session_decode()` (the prefs export trick), `$_SESSION` ⇄ `$g->session` alias, `App::sessionLifecycle()`, `App::sessionHandler()` + `FileSessionHandler` (default) / `TableSessionHandler::register()` (cross-worker shared) / `StoreSessionHandler::register()` / `RedisSessionHandler` (when `ZEALPHP_REDIS_URL`) / `CoroutineMemorySessionHandler` (per-worker demo), `App::sessionTtl()`/`sessionMaxRows()`/`sessionDataSize()`/`sessionSavePath()`/`sessionStrictMode(true)`, `SessionStartMiddleware`, `ZEALPHP_SESSION_SECURE`/`ZEALPHP_SESSION_GC_INTERVAL`.
 - **Batches:** ☐ B1 create/read/write/destroy across **both managers** (CoSessionManager coroutine family / SessionManager mixed+legacy-cgi) · ☐ B2 cookie attributes (SameSite/Secure/HttpOnly via `session_set_cookie_params`) + first-visitor Set-Cookie (#355 tolerated) · ☐ B3 regenerate-on-login (old id invalid after rotation — fixation closed) + strict mode rejects a forged `PHPSESSID` · ☐ B4 handler switchboard: same login flow green on file/Table/Store(/Redis if present)/memory; cross-worker read-your-write on Table at `-w 4` · ☐ B5 `session_encode`/`decode` round-trip (prefs export/import) under the unserialize whitelist · ☐ B6 concurrent same-session writes (two tabs) — last-write semantics recorded · ☐ B7 GC: expired session reaped (`sessionTtl` short + GC interval) · ☐ B8 re-verify.
@@ -266,7 +266,7 @@ does **not** re-file them. (See `../PHASE1-2-RERUN-V048-VERDICT.md`, `../PHASE3-
 | 1 | Response core + dashboard shell | ✅ DONE (coroutine, v0.4.8) |
 | 2 | Request input + file-API | ✅ DONE (coroutine + mixed, v0.4.8) |
 | 3 | Static + conditional GET + download center | ✅ DONE (coroutine, v0.4.8) |
-| 4 | Sessions / identity / handler switchboard | ◻️ |
+| 4 | Sessions / auth | ✅ DONE (coroutine, v0.4.8) |
 | 5 | Middleware suite (full built-in band) | ◻️ |
 | 6 | Routing & dispatch + error pages + hot-reload | ◻️ |
 | 7 | Streaming / SSE / WS / incident rooms | ◻️ |

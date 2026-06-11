@@ -40,6 +40,22 @@ App::ignorePhpExt(false);   // serve public/*.php at their own path (Apache-styl
 
 $app = App::init('127.0.0.1', $port);
 
+// ─── Phase 4 — sessions: explicit save path (avoid the root-fallback #343) +
+//     a handler switchboard so the same login works on every backend ─────────
+$sessDir = sys_get_temp_dir() . '/zealpulse-sessions';
+@mkdir($sessDir, 0700, true);
+App::sessionSavePath($sessDir);
+App::sessionStrictMode(true);                 // reject a forged/unissued PHPSESSID (fixation)
+// Handler switchboard. NOTE: explicitly selecting 'file' routes through the
+// FileSessionHandler class, whose session_regenerate_id(true) path fatals
+// ($savePath accessed before open() — a Phase-4 ZealPHP bug, to be filed). The
+// unconfigured default uses the inline file path that works with rotation, so
+// only set a handler for the non-default backends.
+$zpHandler = getenv('ZEAL_SESSION_HANDLER') ?: 'file';
+if ($zpHandler !== 'file') {
+    App::sessionHandler($zpHandler);
+}
+
 // Route modules in route/*.php are auto-included by ZealPHP at boot, in name
 // order (phase1, phase2, …). Each grabs the app via App::instance().
 
