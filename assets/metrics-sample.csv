@@ -1,0 +1,5 @@
+route,hits,p95_ms,errors
+/health,1240,3,0
+/api/events,883,7,2
+/whoami,402,2,0
+/search,318,5,1

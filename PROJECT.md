@@ -100,12 +100,12 @@ does **not** re-file them. (See `../PHASE1-2-RERUN-V048-VERDICT.md`, `../PHASE3-
 - **Batches confirmed live:** ☑ B1 `$_GET` (route/min/`tags[]` array, both modes) · ☑ B2 `$_POST`+`php://input` (form + JSON, raw_len) · ☑ B3 `$_FILES` (single upload, `is_uploaded_file` true, forged `/etc/passwd`→false) · ☑ B4 `$_COOKIE` (zp_theme+sid parsed) · ☑ B5 `$_REQUEST` avoided — read `$_GET`/`$_POST` explicitly (#356) · ☑ B6 `$_SERVER` (port string-coerced, `SERVER_ADDR` absent confirmed #306) · ☑ B7 Basic-auth (`PHP_AUTH_USER`=ops decoded; 401 gate) · ☑ B8 `getallheaders()` (Authorization etc.) · ☑ B9 file-API/RequestInput path · ☑ B10 `G` aliasing + superglobal n/a in coroutine (`$_GET` populated=True mixed / False coroutine) · ☑ B11 re-verify (known issues respected).
 - **Done:** forms/upload/auth/API all green in mixed; `$g->*` portable in coroutine; superglobal n/a in coroutine confirmed.
 
-### Phase 3 — Static files & conditional GET · `route/phase3.php` · **Status: ◻️ planned**
-- **Feature:** asset pipeline + a **report/CSV download** via `sendFile()` with ETag/Range/conditional-GET; a `.well-known/` health doc.
-- **APIs:** native static handler (css/js), `Response::sendFile()` (conditional + range + weak ETag), `If-None-Match`/`If-Modified-Since`/`Range`.
-- **Batches:** ☐ B1 sendFile core (ETag/Last-Modified/MIME) · ☐ B2 conditional GET (304/412) · ☐ B3 ranges (206/416/multipart) · ☐ B4 native static handler (Last-Modified only; whitelist interception) · ☐ B5 dir/URL normalization · ☐ B6 charset/compression · ☐ B7 re-verify.
-- **Note:** confirm the 3 Phase-3 candidates (HEAD body-leak, `.well-known` unservable, Content-Disposition RFC 6266) live → file via the Phase-3 ultracode sweep.
-- **Done:** download works with ETag/Range; whitelist interception documented.
+### Phase 3 — Static files & conditional GET · `route/phase3.php` + `src/Reports.php` · **Status: ✅ DONE (feature, coroutine v0.4.8) · verification sweep filed the 3 candidates**
+- **Feature:** `/download/{name}` report download via `Response::sendFile()`; `/reports` index; real `public/robots.txt` + `favicon.ico` (native static handler).
+- **APIs:** `Response::sendFile()` (weak ETag, Last-Modified, MIME, Range, conditional GET), native static handler.
+- **Batches confirmed live:** ☑ B1 sendFile core (text/csv MIME, `W/"mtime-size"` ETag, Last-Modified, Accept-Ranges, Content-Disposition, CL) · ☑ B2 conditional GET (If-None-Match→304) · ☑ B3 Range (bytes=0-9→206 len 10) · ☑ B4 native handler (robots.txt: Last-Modified only, no ETag/Range) · ☑ B5 dir/normalization (/reports) · ☑ B6 charset/CT · ☑ B7 re-verify (closed Phase-3 issues hold).
+- **Verification sweep:** the 3 candidates CONFIRMED live + FILED — HEAD body-leak (`fw-sendfile-head-body`), `.well-known` unservable (`fw-wellknown-includecheck-block`), Content-Disposition RFC 6266 (`fw-sendfile-content-disposition-rfc6266`). ZealPulse uses ASCII download names (disposition gap doesn't bite) and respects the others.
+- **Done:** download + conditional + Range green; native-handler behaviour confirmed; parity sweep filed.
 
 ### Phase 4 — Sessions · `route/phase4.php` + `src/Auth.php` · **Status: ◻️ planned**
 - **Feature:** login/logout, session-backed identity, per-user dashboard prefs.
