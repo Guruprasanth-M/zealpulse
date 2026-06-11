@@ -94,12 +94,11 @@ does **not** re-file them. (See `../PHASE1-2-RERUN-V048-VERDICT.md`, `../PHASE3-
 - **Batches confirmed live:** ☑ B1 status (418/451 ok, 999→500, 204) · ☑ B2 header family (X-ZealPulse ×2, two `Link`) · ☑ B3 cookie (zp_theme; Max-Age/SameSite) · ☑ B4 framing (204 len 0; HEAD strips body, keeps CL) · ☑ B5 redirect (302 + offsite→`/` guard) · ☑ B6 charset/CT (array→`application/json`; text charset explicit) · ☑ B7 contract (array/string/int/Generator) · ☑ B8 re-verify (known #290/#354 respected, not re-filed).
 - **Done:** all endpoints green in coroutine; mixed deferred for the generator route (#354).
 
-### Phase 2 — Request input & SAPI · `route/phase2.php` + `api/` · **Status: ⏳ NEXT**
-- **Feature:** the input layer — a metrics filter form (GET query parsing), an event-submit form (POST urlencoded + JSON), an avatar upload (`$_FILES`), a basic-auth-protected admin probe, request-context inspector. File-API endpoints under `api/`.
-- **APIs:** `$_GET/$_POST/$_FILES/$_COOKIE`, `$g->get/post/...`, `getallheaders()`, `$_SERVER`/auth vars, `filter_input()`, ZealAPI files (`api/<name>.php` with `$get/$post`).
-- **Batches to confirm:** ☐ B1 `$_GET` parse · ☐ B2 `$_POST`+`php://input` · ☐ B3 `$_FILES` field-major upload + shims · ☐ B4 `$_COOKIE` parse · ☐ B5 `$_REQUEST` (read `$_GET`/`$_POST` explicitly — #356) · ☐ B6 `$_SERVER` (guard int ports — #306) · ☐ B7 Basic-auth meta-vars · ☐ B8 `getallheaders()` · ☐ B9 PSR-7/RequestInput · ☐ B10 limits + `G` aliasing · ☐ B11 re-verify.
-- **Run:** mixed + legacy-cgi + coroutine-legacy (superglobal modes); coroutine = `$g->*` only (n/a-confirm `$_*`).
-- **Done:** forms/upload/auth/API all work; superglobal n/a in coroutine confirmed.
+### Phase 2 — Request input & SAPI · `route/phase2.php` + `api/events.php` + `src/Req.php` · **Status: ✅ DONE (coroutine + mixed, v0.4.8)**
+- **Feature:** the input layer — `/search` metrics filter (GET), `/events/submit` (POST urlencoded + JSON), `/upload` avatar (`$_FILES`), `/whoami` request inspector, `/admin/probe` Basic-auth gate, `api/events` file-API (GET/POST).
+- **APIs:** `$g->get/post/cookie/server` (mode-portable), `$_GET/$_POST/$_FILES/$_COOKIE`, `php://input`, `is_uploaded_file()`, `getallheaders()`, Basic-auth meta-vars, ZealAPI files.
+- **Batches confirmed live:** ☑ B1 `$_GET` (route/min/`tags[]` array, both modes) · ☑ B2 `$_POST`+`php://input` (form + JSON, raw_len) · ☑ B3 `$_FILES` (single upload, `is_uploaded_file` true, forged `/etc/passwd`→false) · ☑ B4 `$_COOKIE` (zp_theme+sid parsed) · ☑ B5 `$_REQUEST` avoided — read `$_GET`/`$_POST` explicitly (#356) · ☑ B6 `$_SERVER` (port string-coerced, `SERVER_ADDR` absent confirmed #306) · ☑ B7 Basic-auth (`PHP_AUTH_USER`=ops decoded; 401 gate) · ☑ B8 `getallheaders()` (Authorization etc.) · ☑ B9 file-API/RequestInput path · ☑ B10 `G` aliasing + superglobal n/a in coroutine (`$_GET` populated=True mixed / False coroutine) · ☑ B11 re-verify (known issues respected).
+- **Done:** forms/upload/auth/API all green in mixed; `$g->*` portable in coroutine; superglobal n/a in coroutine confirmed.
 
 ### Phase 3 — Static files & conditional GET · `route/phase3.php` · **Status: ◻️ planned**
 - **Feature:** asset pipeline + a **report/CSV download** via `sendFile()` with ETag/Range/conditional-GET; a `.well-known/` health doc.
@@ -192,8 +191,8 @@ does **not** re-file them. (See `../PHASE1-2-RERUN-V048-VERDICT.md`, `../PHASE3-
 | Phase | Feature | Status |
 |---|---|---|
 | 1 | Response core + dashboard shell | ✅ DONE (coroutine, v0.4.8) |
-| 2 | Request input + file-API | ⏳ NEXT |
-| 3 | Static + conditional GET + download | ◻️ |
+| 2 | Request input + file-API | ✅ DONE (coroutine + mixed, v0.4.8) |
+| 3 | Static + conditional GET + download | ⏳ NEXT |
 | 4 | Sessions / auth | ◻️ |
 | 5 | Middleware suite | ◻️ |
 | 6 | Routing & dispatch | ◻️ |
