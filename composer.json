@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "mongodb/mongodb": "^2.3",
         "sibidharan/zealphp": "^0.4.8"
     },
     "autoload": {
