@@ -106,7 +106,15 @@ Store::make('rate_limit', 4096, [
     'count' => [Store::TYPE_INT, 8],
     'reset' => [Store::TYPE_INT, 8],
 ]);
-$reportsInflight = new Counter(0, 'zp_reports_inflight');
+// Counter backend follows the Store backend. NAMED counters touch the backend
+// at construction; under a Redis counter-backend that runs in the MASTER (no
+// coroutine) and predis's hooked stream_socket_client fatals ("API must be
+// called in the coroutine") — the documented master-scope rule. Atomic counters
+// MUST be built pre-fork (shared memory), so we eager-build named counters only
+// under Atomic; under Redis they bind lazily inside a request coroutine (the
+// Metrics ??= accessors) and the concurrency cap uses the middleware's own table.
+$counterIsAtomic = (getenv('ZEALPHP_STORE_BACKEND') ?: 'table') !== 'redis';
+$reportsInflight = $counterIsAtomic ? new Counter(0, 'zp_reports_inflight') : null;
 
 // Phase 7 — the live event bus (WS fan-out + incident rooms). Plain App::ws()
 // over shared Store tables because WSRouter::init() crashes at boot on v0.4.8
@@ -123,7 +131,59 @@ Store::make('live_ring', \ZealPulse\EventBus::RING_SIZE + 1, [
     'msg'  => [Store::TYPE_STRING, 200],
     'ts'   => [Store::TYPE_INT, 8],
 ]);
-$evtSeq   = new Counter(0, 'zp_evt_seq');   // event-ring sequence (online = Store::count('ws_live'))
+// event-ring sequence; built only under Atomic (named Redis counters can't be
+// constructed in the master — see the $counterIsAtomic note above). Online
+// count is Store::count('ws_live'), so this slot is reserved, not dereferenced.
+if ($counterIsAtomic) {
+    new Counter(0, 'zp_evt_seq');
+}
+
+// ─── Phase 8 — the data spine (Store/Counter/Cache/SQL/Mongo/Messaging) ──────
+// Shared-memory tables MUST exist before $app->run() (master fork rule):
+Store::make('route_metrics', 4096, [
+    'route'    => [Store::TYPE_STRING, 96],
+    'hits'     => [Store::TYPE_INT, 8],
+    'errs'     => [Store::TYPE_INT, 8],
+    'total_us' => [Store::TYPE_INT, 8],
+]);
+Store::make('alert_log', 256, [        // pub/sub fan-out proof: one row per worker pid
+    'worker' => [Store::TYPE_INT, 8],
+    'seen'   => [Store::TYPE_INT, 8],
+    'last'   => [Store::TYPE_STRING, 120],
+]);
+Store::make('alert_audit', 4096, [     // reliable-stream audit entries (B14)
+    'msg_id' => [Store::TYPE_STRING, 48],
+    'worker' => [Store::TYPE_INT, 8],
+    'body'   => [Store::TYPE_STRING, 120],
+]);
+if ($counterIsAtomic) {
+    new Counter(0, 'zp_total_hits');   // atomic totals — slots claimed pre-fork
+    new Counter(0, 'zp_online');
+}
+\ZealPHP\Cache::init(maxRows: 4096, cacheDir: __DIR__ . '/.cache', ttlSeconds: 300);
+
+// Per-worker data-layer bootstrap. SQL pool + Mongo indexes are env-gated and
+// degrade gracefully; alert messaging needs the Redis Store backend.
+App::onWorkerStart(function ($server, int $workerId): void {
+    \ZealPulse\Sql::init();
+    if ($workerId === 0) {
+        try {
+            \ZealPulse\Sql::migrate();
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "[zealpulse] SQL migrate skipped: {$e->getMessage()}\n");
+        }
+        if (\ZealPulse\Mongo::available()) {
+            try {
+                \ZealPulse\Mongo::ensureIndexes();
+            } catch (\Throwable $e) {
+                fwrite(STDERR, "[zealpulse] Mongo index bootstrap failed: {$e->getMessage()}\n");
+            }
+        }
+    }
+});
+if ((getenv('ZEALPHP_STORE_BACKEND') ?: 'table') === 'redis') {
+    \ZealPulse\Alerts::wire();         // pub/sub fan-out + reliable audit (Redis backend only)
+}
 
 // ZealAPI auth hooks — the session identity (Phase 4) is the single source of
 // truth; SessionAuthMiddleware and api-file $this->isAuthenticated() share it.
@@ -184,7 +244,11 @@ App::middlewareAlias('referer-gate', function () use ($aliasLog) {
 });
 App::middlewareAlias('reports-gate', function () use ($aliasLog, $reportsInflight) {
     $aliasLog('reports-gate');
-    return new ConcurrencyLimitMiddleware(maxConcurrent: 2, counter: $reportsInflight);
+    // Global Counter mode under Atomic; per-key Store mode under Redis (where a
+    // master-built named Counter would fatal — see the $counterIsAtomic note).
+    return $reportsInflight !== null
+        ? new ConcurrencyLimitMiddleware(maxConcurrent: 2, counter: $reportsInflight)
+        : new ConcurrencyLimitMiddleware(maxConcurrent: 2, tableName: 'rate_limit');
 });
 App::middlewareAlias('upload-cap', function () use ($aliasLog) {
     $aliasLog('upload-cap');
@@ -243,4 +307,4 @@ App::when('/legacy', [new IniIsolationMiddleware(), new BlockPhpExtMiddleware()]
 // order (phase1, phase2, …). Each grabs the app via App::instance().
 
 fwrite(STDERR, sprintf("[zealpulse] mode=%s port=%d\n", $mode, $port));
-$app->run(['worker_num' => 2]);
+$app->run(['worker_num' => (int) (getenv('ZEAL_WORKERS') ?: 2)]);
