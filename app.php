@@ -108,6 +108,23 @@ Store::make('rate_limit', 4096, [
 ]);
 $reportsInflight = new Counter(0, 'zp_reports_inflight');
 
+// Phase 7 — the live event bus (WS fan-out + incident rooms). Plain App::ws()
+// over shared Store tables because WSRouter::init() crashes at boot on v0.4.8
+// (upstream #415). Keys are (string)$fd; iterated for cross-worker fan-out.
+Store::make('ws_live', 4096, ['fd' => [Store::TYPE_INT, 8]]);
+Store::make('ws_rooms', 8192, [
+    'room' => [Store::TYPE_STRING, 64],
+    'name' => [Store::TYPE_STRING, 64],
+    'fd'   => [Store::TYPE_INT, 8],
+]);
+Store::make('live_ring', \ZealPulse\EventBus::RING_SIZE + 1, [
+    'seq'  => [Store::TYPE_INT, 8],
+    'type' => [Store::TYPE_STRING, 32],
+    'msg'  => [Store::TYPE_STRING, 200],
+    'ts'   => [Store::TYPE_INT, 8],
+]);
+$evtSeq   = new Counter(0, 'zp_evt_seq');   // event-ring sequence (online = Store::count('ws_live'))
+
 // ZealAPI auth hooks — the session identity (Phase 4) is the single source of
 // truth; SessionAuthMiddleware and api-file $this->isAuthenticated() share it.
 App::authChecker(fn (): bool => \ZealPulse\Auth::user() !== null);
