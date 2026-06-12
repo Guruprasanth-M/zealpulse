@@ -2,3 +2,4 @@
 composer.phar
 *.log
 .DS_Store
+graphify-out/

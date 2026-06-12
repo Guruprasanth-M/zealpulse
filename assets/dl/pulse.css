@@ -1,0 +1,24 @@
+/* ZealPulse download fixture — pulse.css */
+.pulse { color: #38bdf8; }
+.board { display: grid; gap: 1rem; }
+/* padding rows for Range probes */
+.row-1 { order: 1; }
+.row-2 { order: 2; }
+.row-3 { order: 3; }
+.row-4 { order: 4; }
+.row-5 { order: 5; }
+.row-6 { order: 6; }
+.row-7 { order: 7; }
+.row-8 { order: 8; }
+.row-9 { order: 9; }
+.row-10 { order: 10; }
+.row-11 { order: 11; }
+.row-12 { order: 12; }
+.row-13 { order: 13; }
+.row-14 { order: 14; }
+.row-15 { order: 15; }
+.row-16 { order: 16; }
+.row-17 { order: 17; }
+.row-18 { order: 18; }
+.row-19 { order: 19; }
+.row-20 { order: 20; }

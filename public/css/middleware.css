@@ -1,0 +1,19 @@
+/* ZealPulse — /middleware introspection page (Phase 5) */
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    margin: 2rem auto;
+    max-width: 70rem;
+    padding: 0 1rem;
+    color: #e2e8f0;
+    background: #0f172a;
+}
+h1 { color: #38bdf8; }
+h2 { color: #7dd3fc; margin-top: 2rem; }
+.sub { color: #94a3b8; }
+.hint { color: #64748b; font-size: 0.8em; font-weight: normal; }
+code { background: #1e293b; padding: 0.1rem 0.35rem; border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #334155; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+th { background: #1e293b; }
+ol.chain li, ul.aliases li { margin: 0.2rem 0; }
+ul.aliases { list-style: none; padding-left: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }

@@ -20,16 +20,20 @@ use ZealPulse\Http;
 $app = App::instance();
 
 // ── B1/B3 — login: authenticate + fixation-safe rotation ─────────────────────
-$app->route('/login', methods: ['GET', 'POST'], handler: function ($request) {
+// Phase 5: CSRF-protected (every form route carries the 'csrf' alias; the GET
+// branch embeds the per-session token from $g->memo['csrf_token']).
+$app->route('/login', methods: ['GET', 'POST'], middleware: ['csrf'], handler: function ($request) {
     $method = $request->server['request_method'] ?? ($_SERVER['REQUEST_METHOD'] ?? 'GET');
     if ($method !== 'POST') {
         Http::secureHeaders();
         $flash = Auth::flash() ?? '';
+        $csrf = htmlspecialchars((string) (\ZealPHP\G::instance()->memo['csrf_token'] ?? ''), ENT_QUOTES);
         return <<<HTML
             <!doctype html><meta charset=utf-8><title>Login — ZealPulse</title>
             <link rel="stylesheet" href="/css/app.css">
             <h1>ZealPulse login</h1><p style="color:#f87171">$flash</p>
             <form method="post" action="/login">
+              <input type="hidden" name="_csrf_token" value="$csrf">
               <input name="user" placeholder="user (ops / viewer)" autofocus>
               <input name="pass" type="password" placeholder="password">
               <button>Sign in</button>
@@ -48,8 +52,8 @@ $app->route('/login', methods: ['GET', 'POST'], handler: function ($request) {
     return Http::json(['ok' => false, 'error' => 'invalid_credentials']);
 });
 
-// ── B1 — logout ──────────────────────────────────────────────────────────────
-$app->route('/logout', methods: ['POST'], handler: function () {
+// ── B1 — logout (CSRF'd: a cross-site logout is still a CSRF) ────────────────
+$app->route('/logout', methods: ['POST'], middleware: ['csrf'], handler: function () {
     Auth::logout();
     return Http::json(['ok' => true, 'logged_out' => true]);
 });

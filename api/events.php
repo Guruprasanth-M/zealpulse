@@ -11,14 +11,20 @@ declare(strict_types=1);
 
 use ZealPulse\Req;
 
+// Phase 5 — api in-file middleware (runs INNERMOST, after global/when/route):
+// the alias registry is shared with the route layer.
+$middleware = ['trace:api-events-file'];
+
 $get = function ($request, $response) {
     header('Content-Type: application/json; charset=utf-8');
+    $g = \ZealPHP\G::instance();
     return [
         'events' => [
             ['id' => 1, 'type' => 'boot',    'msg' => 'workers up'],
             ['id' => 2, 'type' => 'metrics', 'msg' => 'primed'],
         ],
         'count' => 2,
+        'trace' => $g->memo['zp_trace'] ?? [],   // proves the in-file chain ran
     ];
 };
 
