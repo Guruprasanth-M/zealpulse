@@ -108,10 +108,10 @@ writes the env ZealPulse reads — see **[SETUP.md](./SETUP.md)** for the full f
 | 2 | Request input + file-API | ✅ |
 | 3 | Static files + conditional GET + downloads | ✅ |
 | 4 | Sessions / auth (fixation-safe) | ✅ |
-| 5 | Middleware suite (CORS/CSRF/RateLimit/Auth/RequestId/…) | 🚧 |
-| 6 | Routing & dispatch | ◻️ |
-| 7 | Streaming / SSE / WebSocket (live board, incident rooms) | ◻️ |
-| 8 | Store/Counter + **dual-DB data layer (MySQL + MongoDB)** | ◻️ |
+| 5 | Middleware suite (CORS/CSRF/RateLimit/Auth/RequestId/…) | ✅ |
+| 6 | Routing & dispatch | ✅ |
+| 7 | Streaming / SSE / WebSocket (live board, incident rooms) | ✅ |
+| 8 | Store/Counter + **dual-DB data layer (MySQL + MongoDB)** | 🚧 |
 | 9–14 | Lifecycle modes · CGI · timers/tasks/signals · security · htmx UI · ops surface | ◻️ |
 
 Self-contained composer project — portable: clone, `composer install`, `php app.php`. See **[PROJECT.md](./PROJECT.md)**
