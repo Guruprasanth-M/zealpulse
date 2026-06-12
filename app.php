@@ -112,6 +112,20 @@ $reportsInflight = new Counter(0, 'zp_reports_inflight');
 // truth; SessionAuthMiddleware and api-file $this->isAuthenticated() share it.
 App::authChecker(fn (): bool => \ZealPulse\Auth::user() !== null);
 App::adminChecker(fn (): bool => \ZealPulse\Auth::isAdmin());
+App::usernameProvider(fn (): ?string => \ZealPulse\Auth::user());
+
+// ── Phase 6 — routing/dispatch boot knobs ────────────────────────────────────
+// Secure-by-default: the framework default leaks full stack traces on every 500
+// (App::$display_errors defaults TRUE — filed upstream #412). ZealPulse turns it
+// OFF in prod; set ZEALPHP_DEV=1 to see traces in development.
+App::displayErrors((bool) getenv('ZEALPHP_DEV'));
+// TRACE refused 405 by default (XST defense). NOTE: OpenSwoole's parser rejects
+// TRACE before PHP, so this is belt-and-braces (upstream #413).
+App::traceEnabled(false);
+// A ZealAPI file whose handler returns null answers 404 (not an empty 200).
+App::apiNullNotFound(true);
+// Warn in the log if a ZealAPI file mixes a filename-match var with $get/$post.
+App::apiWarnCollisions(true);
 
 // ── Alias registry (factories run ONCE at App::run(); instances are SHARED —
 //    stateless rule: per-request state lives in $g, never on the instance).
