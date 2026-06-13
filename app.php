@@ -64,6 +64,25 @@ App::mode($modeConst);
 App::documentRoot(__DIR__ . '/public');
 App::ignorePhpExt(false);   // serve public/*.php at their own path (Apache-style)
 
+// ─── Phase 9 — lifecycle/isolation lab knobs (must be set BEFORE run()) ──────
+// Under coroutine-legacy (needs ext-zealphp) turn on the per-coroutine PROCESS-
+// state isolation so the /modes lab can demo per-request timezone/locale/cwd
+// that never leak across a yield. These are no-ops / refused in other modes, so
+// gate on the mode. defineIsolation stays OFF (the #16 same-name-constant
+// structural limit; opt-in only — the lab documents it on /modes/guard).
+if ($mode === 'coroutine-legacy') {
+    App::coroutineTimezoneIsolation(true);
+    App::coroutineLocaleIsolation(true);
+    App::coroutineCwdIsolation(true);
+}
+// Preload the hot request-path classes in the MASTER (before start() forks) so
+// the first cold concurrent burst can't hit the cold-autoload race (Phase-9 B5).
+App::preloadClasses(
+    \ZealPulse\EventBus::class,
+    \ZealPulse\Metrics::class,
+    \ZealPulse\ModesLab::class,
+);
+
 $app = App::init('127.0.0.1', $port);
 
 // ─── Phase 4 — sessions: explicit save path (avoid the root-fallback #343) +
