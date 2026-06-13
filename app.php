@@ -322,6 +322,27 @@ App::when('/assets-dl', [
 // /legacy → per-request ini snapshot/restore + mod_php-style .php blocking.
 App::when('/legacy', [new IniIsolationMiddleware(), new BlockPhpExtMiddleware()]);
 
+// ─── Phase 10 — CGI dispatch & the legacy bay (MUST be set BEFORE run()) ──────
+// The four CGI strategies (pool/proc/fork/fcgi) only apply in legacy-cgi mode
+// (subprocess isolation); in coroutine/mixed App::include() runs the legacy
+// scripts in-process. Strategy is env-switchable so the /phase10 switchboard
+// can sweep all four (ZEAL_CGI_MODE=pool|proc|fork|fcgi).
+$cgiStrategy = getenv('ZEAL_CGI_MODE') ?: 'pool';
+App::cgiMode($cgiStrategy);
+if ($cgiStrategy === 'fcgi') {
+    App::fcgiAddress(getenv('ZEAL_FCGI_ADDR') ?: '127.0.0.1:9000');  // down ⇒ 502, never a hang (#289 fixed)
+}
+App::cgiPoolSize((int) (getenv('ZEAL_CGI_POOL_SIZE') ?: 4));
+App::cgiPoolMaxRequests((int) (getenv('ZEAL_CGI_POOL_MAX') ?: 500));   // B6 recycle demo
+// B4 — don't leak the app's secrets into legacy CGI subprocesses: allow only an
+// explicit safe set (PREFIX* globs supported). httpoxy HTTP_PROXY is always
+// dropped regardless. NOTE: this allowlist covers pool/proc; fork's spawn env
+// is NOT filtered on v0.4.8 (upstream #257 residual — see zealphp-exp #257).
+App::cgiPoolEnvAllowlist(['PATH', 'HOME', 'LANG', 'LC_*', 'ZEALPULSE_*']);
+// ScriptAlias — any +x file under /cgi-bin/ runs via its #! shebang regardless
+// of extension (Apache parity); public/cgi-bin/status.sh is the RFC-3875 demo.
+App::cgiScriptAlias('/cgi-bin/', ['mode' => 'proc']);
+
 // Route modules in route/*.php are auto-included by ZealPHP at boot, in name
 // order (phase1, phase2, …). Each grabs the app via App::instance().
 
