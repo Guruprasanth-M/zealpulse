@@ -343,8 +343,50 @@ App::cgiPoolEnvAllowlist(['PATH', 'HOME', 'LANG', 'LC_*', 'ZEALPULSE_*']);
 // of extension (Apache parity); public/cgi-bin/status.sh is the RFC-3875 demo.
 App::cgiScriptAlias('/cgi-bin/', ['mode' => 'proc']);
 
+// ─── Phase 11 — the background machine (MUST be wired BEFORE run()) ───────────
+// Server-level primitives are frozen at $server->start(); wire them here.
+$pruneEverySec = (int) (getenv('ZEAL_PRUNE_SEC') ?: 30);
+
+// Pre-fork the Phase-11 atomic counters so every worker/sidecar shares them.
+foreach (['zp_prober_rounds', 'zp_reports_built', 'zp_warmup', 'zp_sigterm',
+          'zp_statsdump', 'zp_pruner_runs', 'zp_tick_aggregations'] as $cName) {
+    new Counter(0, $cName);
+}
+
+// B1 — per-worker metric tick: aggregate this worker's hit ring into a Store row
+// every 5s. App::tick must be started inside onWorkerStart (per-worker event loop).
+App::onWorkerStart(function ($server, $workerId) {
+    App::tick(5000, function () use ($workerId) {
+        \ZealPulse\Background::aggregateTick($workerId);
+    });
+});
+// B2 — boot warmup: one-shot, fires once shortly after each worker starts.
+App::onWorkerStart(function () {
+    App::after(200, fn () => (new Counter(0, 'zp_warmup'))->increment());
+});
+
+// B5 — signals: SIGTERM graceful-drain marker (master) + SIGUSR1 stats dump
+// (workerOnly — the #311-fixed worker-scope path; avoid USR1/USR2 to the master,
+// which OpenSwoole consumes for reload).
+App::onSignal(SIGTERM, fn () => (new Counter(0, 'zp_sigterm'))->increment());           // master
+App::onSignal(SIGUSR1, fn () => (new Counter(0, 'zp_statsdump'))->increment(), workerOnly: true); // worker
+
+// B6 — the pruner sidecar: a long-running process that prunes old probe_results
+// from Mongo on a schedule. Visible as `zealphp:zp-pruner` in ps; dies with the
+// server. Hooked-I/O usleep yields under coroutine:true.
+App::addProcess('zp-pruner', function (\OpenSwoole\Process $p) use ($pruneEverySec) {
+    while (true) {
+        \ZealPulse\Background::pruneOldProbes();
+        (new Counter(0, 'zp_pruner_runs'))->increment();
+        usleep($pruneEverySec * 1_000_000);
+    }
+}, workers: 1, coroutine: true);
+
 // Route modules in route/*.php are auto-included by ZealPHP at boot, in name
 // order (phase1, phase2, …). Each grabs the app via App::instance().
 
 fwrite(STDERR, sprintf("[zealpulse] mode=%s port=%d\n", $mode, $port));
-$app->run(['worker_num' => (int) (getenv('ZEAL_WORKERS') ?: 2)]);
+$app->run([
+    'worker_num'      => (int) (getenv('ZEAL_WORKERS') ?: 2),
+    'task_worker_num' => (int) (getenv('ZEAL_TASKS') ?: 2),   // report task workers (Phase 11)
+]);
